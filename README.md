@@ -123,4 +123,4 @@ All **25 tests pass** in ~11 seconds, verifying:
 ---
 
 ## 📄 License
-MIT License. Built with ❤️ for **Fetch-A-Thon 3.0** by **Team F-ups**.
+MIT License. In **Fetch-A-Thon 3.0** by **Team F-ups**.
