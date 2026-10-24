@@ -48,12 +48,9 @@ from agents.bureau import create_sentinelflow_bureau
 agent = coordinator_agent
 
 if __name__ == "__main__":
-    if "--standalone" in sys.argv:
-        print("🛡️  Starting SentinelFlow Coordinator Agent in Standalone mode...")
-        coordinator_agent.run()
-    else:
+    if "--bureau" in sys.argv:
         print("=" * 65)
-        print("🛡️  Starting SentinelFlow Multi-Agent System (Fetch.ai uAgents)")
+        print("🛡️  Starting SentinelFlow Multi-Agent Bureau (5-Agent Swarm)")
         print("   1. Coordinator Agent  -> ASI:One Interface & ACP Dispatch")
         print("   2. Investigator Agent -> SIEM Log Search & Injection Defense")
         print("   3. Analyst Agent      -> MITRE ATT&CK Risk Scoring (0-100)")
@@ -62,3 +59,6 @@ if __name__ == "__main__":
         print("=" * 65)
         bureau = create_sentinelflow_bureau()
         bureau.run()
+    else:
+        print("🛡️  Starting SentinelFlow SecOps Agent (Single Direct Agent Mode)...")
+        coordinator_agent.run()

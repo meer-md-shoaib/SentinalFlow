@@ -31,10 +31,27 @@ AGENT_ENDPOINT = os.getenv("AGENT_ENDPOINT", "")
 MAILBOX_KEY = os.getenv("AGENTVERSE_MAILBOX_KEY", "")
 USE_MAILBOX = bool(MAILBOX_KEY) or os.getenv("AGENT_MAILBOX", "False").lower() in ("true", "1", "yes")
 
+from uagents.resolver import Resolver, GlobalResolver
+
+class AgentverseFallbackResolver(Resolver):
+    """Guarantees delivery back to Agentverse clients even if Almanac lookup fails."""
+    def __init__(self, base_resolver: Resolver | None = None):
+        self._base = base_resolver or GlobalResolver()
+
+    async def resolve(self, destination: str) -> tuple[str | None, list[str]]:
+        try:
+            addr, endpoints = await self._base.resolve(destination)
+            if endpoints:
+                return addr, endpoints
+        except Exception:
+            pass
+        return destination, ["https://agentverse.ai/v2/agents/mailbox/submit"]
+
 agent_kwargs = {
     "name": AGENT_NAME,
     "seed": COORDINATOR_SEED,
     "port": COORDINATOR_PORT,
+    "resolve": AgentverseFallbackResolver(),
 }
 if MAILBOX_KEY:
     agent_kwargs["mailbox"] = f"{MAILBOX_KEY}@https://agentverse.ai"

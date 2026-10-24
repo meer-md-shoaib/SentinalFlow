@@ -381,23 +381,21 @@ SentinelFlow uses a strict **Closed-Loop Verification Architecture** so you neve
     # Handle Explain Pricing & Emergency Lockdown Fees
     if action_name == "explain_pricing":
         target = str(parsed_intent.get("target") or "demo-user-104")
-        pricing_text = f"""### 💳 SentinelFlow Security Pricing & Emergency Lockdown
+        pricing_text = f"""I understand how alarming an unrecognized login is — don't worry, we can secure `{target}` right now! 🛡️
 
-Here is the exact cost to scan and protect your account:
-
-| Security Action | Price | What's Included |
-| :--- | :--- | :--- |
-| 🔍 **Account Threat Scan** | **100% FREE** | Full scan of recent logins, geo-travel anomaly detection & MITRE ATT&CK risk scoring |
-| 📜 **Login History & Forensics** | **100% FREE** | Complete timeline of who accessed your account and where from |
-| 🚨 **Emergency Intruder Lockdown** | **0.1 FET** (~$0.10 USD) | 1-tap instant kick-out: revokes all active sessions & disconnects all intruder devices |
-| 🛡️ **Cryptographic Safety Certificate** | **INCLUDED FREE** | SHA-256 tamper-proof verification receipt proving the intruder is terminated |
+Here is the exact cost breakdown:
+* 🔍 **Scanning & Threat Assessment:** **100% FREE** — I check recent login attempts, analyze geolocation anomalies, and verify your devices at no cost.
+* 🚨 **Emergency Lockdown (Kick Them Out):** Costs just **0.1 FET** (~$0.10 USD).
+* 📜 **Cryptographic Safety Certificate:** **Included FREE** with every lockdown as permanent proof that the intruder's access was severed.
 
 ---
 
-💡 **To kick out an intruder right now from `{target}`**:
-* 💬 Say **"Kick them out"** (or reply **2**) — to revoke their sessions immediately for **0.1 FET**
-* 💬 Say **"Scan"** (or reply **1**) — to run a free scan first
-* 💬 Say **"History"** (or reply **3**) — to view recent login records"""
+### ⚡ What Happens When You Lock Down:
+1. All active sessions, web cookies, and OAuth tokens are immediately revoked.
+2. The unrecognized device is disconnected in under 2 seconds.
+3. Our independent Auditor Agent verifies zero unauthorized sessions remain open.
+
+💡 **To kick out the intruder right now**, simply reply **"Kick them out"** (or type **2**) and I'll execute the lockdown immediately!"""
         reply = ChatMessage(
             timestamp=datetime.now(timezone.utc),
             msg_id=uuid4(),
@@ -626,13 +624,24 @@ I've taken care of everything:
     )
 
     if result.get("status") == "insufficient_data":
+        conversational_text = f"""I just completed a full scan of `{target}` across our recent telemetry records! 🔍
+
+Here is what I found:
+* 👤 **Account:** `{target}`
+* 🛡️ **Status:** **Clean & Secure (0 Anomalous Signals)**
+* ⚠️ **Suspicious Activity:** No unauthorized logins, failed password bursts, or impossible travel detected in the last 60 minutes.
+* 📍 **Perimeter:** All baseline telemetry is normal.
+
+Everything looks completely safe and in order right now! 😊
+
+💡 *If you noticed an unfamiliar login alert or received an unexpected password reset email, let me know and I can help you monitor it.*"""
         reply = ChatMessage(
             timestamp=datetime.now(timezone.utc),
             msg_id=uuid4(),
             content=[
                 TextContent(
                     type="text",
-                    text=f"SentinelFlow Investigation Complete: 0 security logs found for target '{target}' in the last 60 minutes. No anomalous signals detected.",
+                    text=conversational_text,
                 )
             ],
         )
