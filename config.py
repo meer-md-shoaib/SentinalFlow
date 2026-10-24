@@ -30,13 +30,25 @@ class Settings:
     asi1_model: str = field(default_factory=lambda: os.getenv("ASI1_MODEL", "asi1"))
 
     # Agent / platform
+    agent_name: str = field(
+        default_factory=lambda: os.getenv("AGENT_NAME", "sentinelflow")
+    )
     agent_port: int = field(
         default_factory=lambda: int(os.getenv("AGENT_PORT", "8081"))
+    )
+    agent_endpoint: str = field(
+        default_factory=lambda: os.getenv(
+            "AGENT_ENDPOINT", "http://127.0.0.1:8081/submit"
+        )
     )
     agentverse_mailbox_key: str = field(
         default_factory=lambda: os.getenv("AGENTVERSE_MAILBOX_KEY", "")
     )
-    agent_seed: str = field(default_factory=lambda: os.getenv("AGENT_SEED", ""))
+    agent_seed: str = field(
+        default_factory=lambda: os.getenv(
+            "AGENT_SEED", "sentinelflow_challenge_master_seed_2026"
+        )
+    )
 
     # Bounded execution limits (security requirements)
     llm_timeout_seconds: float = 20.0

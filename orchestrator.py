@@ -678,3 +678,86 @@ def get_orchestrator(llm: Any | None = None) -> Orchestrator:
     if _orchestrator is None:
         _orchestrator = Orchestrator(llm=llm)
     return _orchestrator
+
+
+# ----------------------------------------------------------- uAgents Server
+def _build_uagents_models():
+    from uagents import Model
+
+    class ChatMessage(Model):
+        text: str
+
+    class Message(Model):
+        text: str
+
+    class TextContent(Model):
+        text: str
+
+    return ChatMessage, Message, TextContent
+
+
+def create_agent(
+    name: str | None = None,
+    port: int | None = None,
+    seed: str | None = None,
+    endpoint: list[str] | str | None = None,
+    mailbox: str | None = None,
+) -> Any:
+    """Create and configure the SentinelFlow uAgent server."""
+    from uagents import Agent, Context
+
+    ChatMessage, Message, TextContent = _build_uagents_models()
+
+    agent_name = name or settings.agent_name
+    agent_port = port or settings.agent_port
+    agent_seed = seed or settings.agent_seed
+    agent_endpoint = endpoint or settings.agent_endpoint
+    mailbox_key = mailbox or settings.agentverse_mailbox_key
+
+    kwargs: dict[str, Any] = {
+        "name": agent_name,
+        "port": agent_port,
+        "seed": agent_seed,
+    }
+    if mailbox_key:
+        kwargs["mailbox"] = f"{mailbox_key}@https://agentverse.ai"
+    elif agent_endpoint:
+        kwargs["endpoint"] = [agent_endpoint] if isinstance(agent_endpoint, str) else agent_endpoint
+
+    agent = Agent(**kwargs)
+
+    async def _process_incoming(ctx: Context, sender: str, text: str) -> None:
+        ctx.logger.info(f"Incoming request from {sender}: {text[:80]}")
+        orch = get_orchestrator()
+        reply = orch.handle_message(text, sender=sender)
+        ctx.logger.info(f"Dispatching reply to {sender} (status={reply.status})")
+        await ctx.send(sender, ChatMessage(text=reply.text))
+
+    @agent.on_message(model=ChatMessage)
+    async def handle_chat_message(ctx: Context, sender: str, msg: Any) -> None:
+        await _process_incoming(ctx, sender, getattr(msg, "text", str(msg)))
+
+    @agent.on_message(model=Message)
+    async def handle_generic_message(ctx: Context, sender: str, msg: Any) -> None:
+        await _process_incoming(ctx, sender, getattr(msg, "text", str(msg)))
+
+    @agent.on_message(model=TextContent)
+    async def handle_text_content(ctx: Context, sender: str, msg: Any) -> None:
+        await _process_incoming(ctx, sender, getattr(msg, "text", str(msg)))
+
+    return agent
+
+
+if __name__ == "__main__":
+    agent = create_agent()
+    print("=" * 64)
+    print(f"SentinelFlow uAgent is starting...")
+    print(f"Agent Name    : {agent.name}")
+    print(f"Agent Address : {agent.address}")
+    if hasattr(agent, "mailbox") and agent.mailbox:
+        print(f"Agent Mailbox : {agent.mailbox}")
+    else:
+        print(f"Agent Endpoint: {settings.agent_endpoint}")
+    print("=" * 64)
+    agent.run()
+
