@@ -3,6 +3,7 @@
 .env.local
 *.pem
 *.key
+private_keys.json
 
 # Python
 __pycache__/
