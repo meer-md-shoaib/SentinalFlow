@@ -40,7 +40,7 @@ from cards import (
 )
 from controller import SentinelFlowController
 from tools.log_search import search_logs
-from asi1_client import craft_analyst_briefing
+from asi1_client import craft_analyst_briefing, _chat_completion
 
 chat_proto = Protocol(spec=chat_protocol_spec)
 controller = SentinelFlowController()
@@ -105,22 +105,59 @@ def parse_card_selection(text: str) -> dict[str, Any] | None:
     if lower in ("4", "4.", "#4", "four"):
         return {"action": "investigate_target", "target": "sarah-dev-92", "mode": "consumer"}
 
-    # 1. Consumer hack alert / Investigation trigger (Check specific high-priority keywords first)
-    if any(kw in lower for kw in (
-        "hacked", "stole my password", "someone logged into", "someone accessed",
-        "unauthorized login", "investigate", "analyze", "check", "triage",
-        "suspicious", "compromise", "scan", "check my account", "check account",
-        "am i safe", "is my account safe", "got hacked", "hack", "someone in my account"
+    # 1. Explain SHA-256 Safety Certificate / Cryptographic Proof
+    if any(phrase in lower for phrase in (
+        "sha-256", "sha256", "safety certificate", "certificate", "cryptographic proof",
+        "proof that my account is secure", "proof of security", "verification receipt",
+        "how can i use it as proof", "use it as proof", "safety cert"
+    )) or ("certificate" in lower and "proof" in lower):
+        target_found = extract_target_from_text(clean_text)
+        return {"action": "explain_certificate", "target": target_found}
+
+    # 2. Explain Verification / "How do I know they're gone" / Closed-Loop
+    if any(phrase in lower for phrase in (
+        "how do i know", "how do we know", "actually gone", "can't get back",
+        "cant get back", "get back in", "closed loop", "closed-loop",
+        "know for sure", "sure they're gone", "sure they are gone"
     )):
         target_found = extract_target_from_text(clean_text)
-        is_consumer = not any(w in lower for w in ("soc", "mitre", "tier-3", "siem", "enterprise"))
-        return {
-            "action": "investigate_target",
-            "target": target_found,
-            "mode": "consumer" if is_consumer else "soc",
-        }
+        return {"action": "explain_verification", "target": target_found}
 
-    # 2. Block IP action (Check before session lock so 'block' does not match 'lock')
+    # 3. Explain Pricing / Cost / Fees
+    if any(phrase in lower for phrase in (
+        "how much will it cost", "how much does it cost", "how much to", "what is the cost",
+        "pricing", "how much is", "cost to kick", "fee"
+    )) or (("cost" in lower or "price" in lower) and ("kick" in lower or "lock" in lower or "protect" in lower)):
+        target_found = extract_target_from_text(clean_text)
+        return {"action": "explain_pricing", "target": target_found}
+
+    # 4. Request Login History / Forensics / Raw Logs
+    if any(phrase in lower for phrase in (
+        "more information", "more info", "request more info", "request more information",
+        "login history", "show logs", "show me the login", "who accessed",
+        "recent logins", "access history", "history of logins", "details of login",
+        "raw logs", "forensic", "details"
+    )) or ("history" in lower and any(w in lower for w in ("login", "logins", "account", "show", "accessed", "see"))):
+        target_found = extract_target_from_text(clean_text)
+        return {"action": "request_more_info", "target": target_found}
+
+    # 5. Agent Team / Architecture Questions
+    if any(kw in lower for kw in (
+        "how many agents", "multi agent", "single agent", "agents are present",
+        "what agents", "swarm", "agents work", "who are the agents"
+    )):
+        return {"action": "agent_info"}
+
+    # 6. Consumer "It Was Me" (False Alarm / Confirmation)
+    if any(phrase in lower for phrase in (
+        "it was me", "that was me", "this was me", "i did that", "it was just me",
+        "false alarm", "my own login", "ignore alert", "all good", "i logged in",
+        "that's me", "thats me"
+    )):
+        target_found = extract_target_from_text(clean_text)
+        return {"action": "it_was_me", "target": target_found}
+
+    # 7. Explicit Action: Block Attacker IP
     if "block ip" in lower or "block attacker ip" in lower or "block 198.51.100.42" in lower or "quarantine ip" in lower:
         return {
             "action": "approve_containment",
@@ -130,13 +167,16 @@ def parse_card_selection(text: str) -> dict[str, Any] | None:
             "fee": "0.1 FET",
         }
 
-    # 3. Approve session revocation / Consumer Emergency Lockdown
-    if any(kw in lower for kw in (
-        "lock my account", "lock down", "emergency lock", "approve session revocation",
-        "approve containment", "approve", "revoke", "kick out", "yes, revoke",
-        "authorize", "confirm", "lock it", "do it", "stop them", "kick them",
-        "kick them out", "kick him out", "boot them", "log them out"
-    )) or re.search(r"\b(lock|yes|yep|yeah|ok|okay|sure)\b", lower):
+    # 8. Explicit Action: Approve containment / Emergency Lockdown
+    is_question = "?" in clean_text or any(lower.startswith(w) for w in ("how", "what", "why", "when", "after", "if", "can you explain"))
+    if not is_question and (
+        any(kw in lower for kw in (
+            "kick them out", "kick him out", "kick out the intruder", "lock my account",
+            "lock down my account", "approve session revocation", "approve containment",
+            "revoke sessions", "lock it now", "boot them", "log them out", "do the lockdown",
+            "yes revoke", "yes lock"
+        )) or lower in ("lock", "yes", "approve", "confirm", "revoke")
+    ):
         target_found = extract_target_from_text(clean_text)
         is_consumer = not any(w in lower for w in ("soc", "mitre", "tier-3", "siem", "enterprise"))
         return {
@@ -148,32 +188,34 @@ def parse_card_selection(text: str) -> dict[str, Any] | None:
             "mode": "consumer" if is_consumer else "soc",
         }
 
-    # 4. Consumer "It was me" dismissal / Rejection
-    if any(kw in lower for kw in ("it was me", "that was me", "safe", "false alarm", "my login", "ignore", "all good")) or re.search(r"\b(no|nope|me)\b", lower):
+    # 9. Consumer hack alert / Investigation trigger
+    if any(kw in lower for kw in (
+        "hacked", "stole my password", "someone logged into", "someone accessed",
+        "unauthorized login", "investigate", "analyze", "check", "triage",
+        "suspicious", "compromise", "scan", "check my account", "check account",
+        "am i safe", "is my account safe", "account safe",
+        "got hacked", "hack", "someone in my account", "scan alex"
+    )):
         target_found = extract_target_from_text(clean_text)
-        return {"action": "it_was_me", "target": target_found}
+        is_consumer = not any(w in lower for w in ("soc", "mitre", "tier-3", "siem", "enterprise"))
+        return {
+            "action": "investigate_target",
+            "target": target_found,
+            "mode": "consumer" if is_consumer else "soc",
+        }
 
-    # 5. Request more information / Forensics / History
-    if any(kw in lower for kw in ("more info", "request more info", "request more information", "forensic", "details", "raw logs", "show logs", "login history", "history", "logins")) or re.search(r"\b(details|info|more|history|logins)\b", lower):
-        target_found = extract_target_from_text(clean_text)
-        return {"action": "request_more_info", "target": target_found}
-
-    # 6. Reject / Dismiss incident
+    # 10. Reject / Dismiss incident
     if any(kw in lower for kw in ("reject", "dismiss", "false positive", "cancel", "deny")):
         target_found = extract_target_from_text(clean_text)
         return {"action": "dismiss_incident", "target": target_found}
 
-    # Check for agent team / architecture questions
-    if any(kw in lower for kw in ("how many agents", "multi agent", "single agent", "agents are present", "what agents", "swarm", "agents")):
-        return {"action": "agent_info"}
-
-    # 7. Help / Greeting / Onboarding
-    if any(re.search(rf"\b{greeting}\b", lower) for greeting in ("hello", "hi", "hey", "help", "start", "menu", "options", "yo", "sup")) or any(q in lower for q in ("who are you", "what can you do", "what to type", "how does this work", "?")):
+    # 11. Welcome / Help
+    if any(re.search(rf"\b{greeting}\b", lower) for greeting in ("hello", "hi", "hey", "help", "start", "menu", "options", "yo", "sup")) or any(q in lower for q in ("who are you", "what can you do", "what to type", "how does this work")):
         return {"action": "welcome"}
 
-    # Target direct email or account name (e.g. "alex@gmail.com")
+    # 12. Target direct email or account name (e.g. "alex@gmail.com")
     match = ACCOUNT_RE.search(clean_text)
-    if match and ("@" in clean_text or "user" in clean_text):
+    if match and ("@" in clean_text or "user-" in clean_text or "dev-" in clean_text):
         return {
             "action": "investigate_target",
             "target": match.group(1),
@@ -266,6 +308,100 @@ Here is the team:
 💬 You can ask me to **"Scan my account"** or say **"Help"** anytime!""",
                 )
             ],
+        )
+    # Handle Explain SHA-256 Safety Certificate
+    if action_name == "explain_certificate":
+        cert_text = """### 🛡️ What is the SHA-256 Safety Certificate?
+
+The **SHA-256 Safety Certificate** (Cryptographic Verification Receipt) is your permanent, tamper-proof mathematical proof that your account was investigated, remediated, and verified by our multi-agent security system.
+
+---
+
+#### 🔍 How It Works:
+1. **Zero-Trust State Inspection**: After containment, our independent **Auditor Agent** checks the session ledger directly.
+2. **Cryptographic Proof Computation**: The Auditor hashes the target account, action, verified `active_sessions: 0`, timestamp, and its own digital signature using SHA-256:
+   ```
+   SHA-256: 7a3f89b2c019d84e1256fe9982ba310cae79f61b0c034a749321d5c2185ef10a
+   ```
+3. **Immutability**: Once calculated, nobody can forge or alter this certificate without invalidating the mathematical hash.
+
+---
+
+#### 📄 How You Can Use It As Proof:
+* 🏛️ **Cyber Insurance**: Submit the certificate to your insurance provider to prove the incident was contained at an exact timestamp.
+* 🏢 **Company IT & Compliance**: Forward it to your security team or manager to confirm unauthorized access has been terminated.
+* ⚖️ **Account Recovery & Legal**: Present the cryptographic receipt to platform support (Google, Microsoft, Fetch.ai) as proof of account sanitization.
+* 🔒 **Your Peace of Mind**: You don't need to guess if the intruder is gone — the SHA-256 hash mathematically proves it.
+
+💡 *No account changes are needed to view this information. If you ever suspect suspicious activity, just say **"Scan my account"**!*"""
+        reply = ChatMessage(
+            timestamp=datetime.now(timezone.utc),
+            msg_id=uuid4(),
+            content=[TextContent(type="text", text=cert_text)],
+        )
+        await ctx.send(sender, reply)
+        return
+
+    # Handle Explain Closed-Loop Verification
+    if action_name == "explain_verification":
+        verif_text = """### 🔒 How Do You Know For Sure the Intruder is Gone?
+
+SentinelFlow uses a strict **Closed-Loop Verification Architecture** so you never have to guess or wonder if you're safe:
+
+---
+
+#### 👥 Step-by-Step Multi-Agent Defense:
+1. ⚡ **Step 1 — Immediate Revocation (Containment Agent)**:
+   - All active web sessions, OAuth tokens, and mobile refresh tokens are immediately invalidated.
+   - The intruder is kicked out across all devices in under 2 seconds.
+
+2. 🔎 **Step 2 — Out-of-Band State Query (Auditor Agent)**:
+   - Our **Auditor Agent** acts completely independently from the agent that performed the lockdown.
+   - It performs a zero-trust check directly on the session database.
+   - It confirms that `active_sessions == 0` for all unauthorized devices and IPs (`198.51.100.42`).
+
+3. 📜 **Step 3 — Cryptographic SHA-256 Receipt**:
+   - The Auditor generates a signed SHA-256 receipt certifying that zero sessions remain active.
+   - If even one unauthorized session were still active, the verification would fail and sound an alert.
+
+4. 🛡️ **Step 4 — Perimeter IP Quarantine**:
+   - The intruder's IP address (`198.51.100.42`) is blocked, preventing them from reconnecting even if they still have old passwords.
+
+---
+
+👉 **Summary**: You don't just get a message saying "all done" — you receive an independent cryptographic proof that zero unauthorized sessions remain open."""
+        reply = ChatMessage(
+            timestamp=datetime.now(timezone.utc),
+            msg_id=uuid4(),
+            content=[TextContent(type="text", text=verif_text)],
+        )
+        await ctx.send(sender, reply)
+        return
+
+    # Handle Explain Pricing & Emergency Lockdown Fees
+    if action_name == "explain_pricing":
+        target = str(parsed_intent.get("target") or "demo-user-104")
+        pricing_text = f"""### 💳 SentinelFlow Security Pricing & Emergency Lockdown
+
+Here is the exact cost to scan and protect your account:
+
+| Security Action | Price | What's Included |
+| :--- | :--- | :--- |
+| 🔍 **Account Threat Scan** | **100% FREE** | Full scan of recent logins, geo-travel anomaly detection & MITRE ATT&CK risk scoring |
+| 📜 **Login History & Forensics** | **100% FREE** | Complete timeline of who accessed your account and where from |
+| 🚨 **Emergency Intruder Lockdown** | **0.1 FET** (~$0.10 USD) | 1-tap instant kick-out: revokes all active sessions & disconnects all intruder devices |
+| 🛡️ **Cryptographic Safety Certificate** | **INCLUDED FREE** | SHA-256 tamper-proof verification receipt proving the intruder is terminated |
+
+---
+
+💡 **To kick out an intruder right now from `{target}`**:
+* 💬 Say **"Kick them out"** (or reply **2**) — to revoke their sessions immediately for **0.1 FET**
+* 💬 Say **"Scan"** (or reply **1**) — to run a free scan first
+* 💬 Say **"History"** (or reply **3**) — to view recent login records"""
+        reply = ChatMessage(
+            timestamp=datetime.now(timezone.utc),
+            msg_id=uuid4(),
+            content=[TextContent(type="text", text=pricing_text)],
         )
         await ctx.send(sender, reply)
         return
@@ -453,7 +589,33 @@ I've taken care of everything:
         await ctx.send(sender, reply)
         return
 
-    # 4. Process Natural Language Investigation Intent
+    # 4. Process Natural Language Investigation Intent or Fallback AI
+    is_investigation = (parsed_intent and parsed_intent.get("action") == "investigate_target") or any(
+        kw in inbound_text.lower() for kw in ("scan", "check", "hacked", "hack", "suspicious", "compromise", "someone", "login", "logins", "@", "user-")
+    )
+    if not is_investigation:
+        # Fallback to ASI:One AI to answer the user's conversational query
+        ai_reply_text = _chat_completion([
+            {
+                "role": "system",
+                "content": (
+                    "You are SentinelFlow, an autonomous SecOps multi-agent swarm built on Fetch.ai uAgents. "
+                    "Features: 5-agent swarm (Coordinator, Investigator, Analyst, Containment, Auditor). "
+                    "Free account scans, 0.1 FET emergency intruder lockdown, closed-loop verification, and SHA-256 safety certificates. "
+                    "Answer the user's inquiry clearly, accurately, and helpfully."
+                ),
+            },
+            {"role": "user", "content": inbound_text},
+        ])
+        if ai_reply_text:
+            reply = ChatMessage(
+                timestamp=datetime.now(timezone.utc),
+                msg_id=uuid4(),
+                content=[TextContent(type="text", text=ai_reply_text)],
+            )
+            await ctx.send(sender, reply)
+            return
+
     target = (parsed_intent.get("target") if parsed_intent and parsed_intent.get("target") else None) or extract_target_from_text(inbound_text)
     ctx.logger.info(f"Initiating investigation for target: {target} (Consumer: {is_consumer_query})")
 
