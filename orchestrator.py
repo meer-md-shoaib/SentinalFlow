@@ -748,7 +748,63 @@ def create_agent(
     return agent
 
 
+def register_agentverse_chat(
+    api_key: str | None = None,
+    seed_phrase: str | None = None,
+    endpoint: str | None = None,
+    name: str = "sentinalflow",
+) -> bool:
+    """Register the chat agent with Agentverse using uagents_core."""
+    import os
+    from uagents_core.utils.registration import (
+        RegistrationRequestCredentials,
+        register_chat_agent,
+    )
+
+    key = (
+        api_key
+        or os.getenv("AGENTVERSE_KEY")
+        or os.getenv("AGENTVERSE_API_KEY")
+        or settings.agentverse_key
+    )
+    seed = (
+        seed_phrase
+        or os.getenv("AGENT_SEED_PHRASE")
+        or os.getenv("AGENT_SEED")
+        or settings.agent_seed
+    )
+    ep = endpoint or settings.agent_endpoint
+
+    if not key:
+        print("[!] AGENTVERSE_KEY is not set. Please add it to your .env file.")
+        return False
+
+    print(f"Registering chat agent '{name}' with Agentverse...")
+    print(f"  Endpoint: {ep}")
+    try:
+        success = register_chat_agent(
+            name,
+            ep,
+            active=True,
+            credentials=RegistrationRequestCredentials(
+                agentverse_api_key=key,
+                agent_seed_phrase=seed,
+            ),
+        )
+        print(f"  Result  : {'SUCCESS' if success else 'FAILED'}")
+        return bool(success)
+    except Exception as exc:
+        print(f"  Registration error: {exc}")
+        return False
+
+
 if __name__ == "__main__":
+    import sys
+
+    # If --register is passed, perform Agentverse chat registration first
+    if "--register" in sys.argv or settings.agentverse_key:
+        register_agentverse_chat()
+
     agent = create_agent()
     print("=" * 64)
     print(f"SentinelFlow uAgent is starting...")
@@ -760,4 +816,5 @@ if __name__ == "__main__":
         print(f"Agent Endpoint: {settings.agent_endpoint}")
     print("=" * 64)
     agent.run()
+
 

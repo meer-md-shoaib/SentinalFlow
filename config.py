@@ -44,10 +44,12 @@ class Settings:
     agentverse_mailbox_key: str = field(
         default_factory=lambda: os.getenv("AGENTVERSE_MAILBOX_KEY", "")
     )
+    agentverse_key: str = field(
+        default_factory=lambda: os.getenv("AGENTVERSE_KEY") or os.getenv("AGENTVERSE_API_KEY", "")
+    )
     agent_seed: str = field(
-        default_factory=lambda: os.getenv(
-            "AGENT_SEED", "sentinelflow_challenge_master_seed_2026"
-        )
+        default_factory=lambda: os.getenv("AGENT_SEED_PHRASE")
+        or os.getenv("AGENT_SEED", "sentinelflow_challenge_master_seed_2026")
     )
 
     # Bounded execution limits (security requirements)
